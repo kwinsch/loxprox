@@ -4,6 +4,13 @@
 
 More input types will be added in the future to include additional data like readings from the Energy Meter.
 
+# Execute in place
+
+```sh
+python3 -m loxprox.main -c config/loxprox.yml
+```
+Make sure to install dependencies first. Pipenv is recommended. See also `requirements.txt`.
+
 ## Docker
 
 ### Server configuration
@@ -27,6 +34,6 @@ Edit the `docker-compose.yml` file to your liking and run:
 docker compose up -d
 ```
 
-## Logs
+### Logs
 The server process is started with supervisord. Logs can be found in the directory 'config/log/'. Supervisor is also providing a webinterface on port 52080 in my default config. Username and password are 'loxprox:loxone'. The logs have unfurtunately a delay for some reason.
 
