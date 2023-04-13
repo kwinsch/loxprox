@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  loxprox:
+    build: .
+    image: loxprox_image
+    container_name: loxprox_container
+    ports: # host:container
+      - "52001:52001/udp" # UDP processing server
+      - "52080:52080"     # Supervisor web interface
+    volumes:
+     - /path/to/host/config_dir:/opt/nivos/loxprox

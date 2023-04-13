@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyc.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Poetry
+.poetry/
+.poetry.toml
+poetry.lock
+
+# Pyenv
+.python-version
+
+# Jupyter
+.ipynb_checkpoints
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Project
+loxprox/loxprox.yml
+config/*
