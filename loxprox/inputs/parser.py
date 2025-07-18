@@ -105,8 +105,8 @@ class InputParser:
             Parsed data dict
         """
         try:
-            # Split by dot to separate device and payload
-            parts = data.split('.')
+            # Split by dot to separate device and payload (only first dot)
+            parts = data.split('.', 1)
             if len(parts) != 2:
                 logger.warning(f"Invalid legacy format (expected device.payload): {data}")
                 return None
