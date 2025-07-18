@@ -122,17 +122,23 @@ class InputParser:
             device_type = match.group(1)
             device_id = match.group(2)
             
-            # Parse payload as integer
-            try:
-                payload = int(payload_str)
-            except ValueError:
-                logger.warning(f"Invalid payload (not a number): {payload_str}")
-                return None
-            
-            # Convert payload based on device type
-            value = self._convert_payload(device_type, payload)
-            if value is None:
-                return None
+            # Check if payload is key:value format (for power meters)
+            if ':' in payload_str and device_type == 'pm':
+                value = self._parse_power_meter_payload(payload_str)
+                if value is None:
+                    return None
+            else:
+                # Parse payload as integer (for lights)
+                try:
+                    payload = int(payload_str)
+                except ValueError:
+                    logger.warning(f"Invalid payload (not a number): {payload_str}")
+                    return None
+                
+                # Convert payload based on device type
+                value = self._convert_payload(device_type, payload)
+                if value is None:
+                    return None
                 
             return {
                 'device_type': device_type,
@@ -184,4 +190,45 @@ class InputParser:
             
         else:
             logger.warning(f"Unknown device type: {device_type}")
+            return None
+    
+    def _parse_power_meter_payload(self, payload_str: str) -> Optional[Dict[str, Any]]:
+        """Parse power meter key:value payload.
+        
+        Args:
+            payload_str: String like "pf:5.220,mrc:34169,mrd:0,v1:241.0,v2:240.0,v3:238.0,i1:15.3,i2:5.1,i3:2.1"
+            
+        Returns:
+            Dict with parsed power meter values
+        """
+        try:
+            result = {}
+            
+            # Split by comma to get key:value pairs
+            pairs = payload_str.split(',')
+            
+            for pair in pairs:
+                if ':' not in pair:
+                    logger.warning(f"Invalid key:value pair in power meter data: {pair}")
+                    continue
+                    
+                key, value_str = pair.split(':', 1)
+                
+                try:
+                    # Parse as float
+                    value = float(value_str)
+                    result[key] = value
+                except ValueError:
+                    logger.warning(f"Invalid numeric value for key {key}: {value_str}")
+                    continue
+            
+            # Validate we have at least some expected fields
+            if not result or 'pf' not in result:
+                logger.warning(f"Power meter data missing required fields: {result}")
+                return None
+                
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error parsing power meter payload '{payload_str}': {e}")
             return None
