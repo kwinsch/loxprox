@@ -3,10 +3,14 @@ version: '3.8'
 services:
   loxprox:
     build: .
-    image: loxprox_image
-    container_name: loxprox_container
+    image: loxprox:latest
+    container_name: loxprox
+    restart: unless-stopped
     ports: # host:container
       - "52001:52001/udp" # UDP processing server
-      - "52080:52080"     # Supervisor web interface
+      - "52080:52080"     # Supervisor web interface (optional)
     volumes:
-     - /path/to/host/config_dir:/opt/nivos/loxprox
+      - ./config:/etc/loxprox  # Configuration directory
+      - ./logs:/var/log/loxprox  # Log directory
+    environment:
+      - LOXPROX_CONFIG=/etc/loxprox/loxprox.yml

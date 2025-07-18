@@ -5,8 +5,8 @@ with open('requirements.txt') as f:
 
 setup(
     name="loxprox",
-    version='0.1.0',
-    description='Control Philips Hue lights from Loxone Miniserver',
+    version='0.2.0',
+    description='Modular UDP proxy for Loxone home automation - routes data to Philips Hue, monitoring systems, and more',
     author='Kevin Bortis',
     packages=find_packages(),
     install_requires=requirements,
@@ -15,4 +15,5 @@ setup(
             'loxprox=loxprox.main:main',
             ],
         },
+    python_requires='>=3.8',
 )

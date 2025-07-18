@@ -1,122 +1,163 @@
-import asyncio, argparse
+import asyncio
+import argparse
+import logging
+import signal
+import sys
+from typing import Optional
 from .config import load_config
-from .converter import convert_received_data
-from phue import Bridge
-from .colors import *
-import re
+from .inputs.parser import InputParser
+from .handler_manager import HandlerManager
+from .output_manager import OutputManager
 
-# Global Control Object
-bridge = None
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Function to initialize the bridge object
-def initialize_bridge(config):
-    global bridge 
-    bridge = Bridge(config["hue_bridge"]["ip"], username=config["hue_bridge"]["username"])
-    print(f"Connected to Philips Hue bridge at {config['hue_bridge']['ip']}")
 
-def extract_id(s):
-    match = re.search(r'ph(\d+)', s)
-    if match:
-        return int(match.group(1))
-    else:
-        return None
-
-# Temporary converter function for rgb to xy conversion. TODO: Include and use the color conversion library.
-def rgb_to_xy(r, g, b):
-    X = r * 0.664511 + g * 0.154324 + b * 0.162028
-    Y = r * 0.283881 + g * 0.668433 + b * 0.047685
-    Z = r * 0.000088 + g * 0.072310 + b * 0.986039
-
-    x = X / (X + Y + Z)
-    y = Y / (X + Y + Z)
-
-    return x, y
-
-# Directly set the calculated colors to the hue lamp. TODO: Create one lamp object with XYZ parameters. Remember lamp state.
-def update_color(lamp_id,lamp_type,rgb_color):
-    control_id = extract_id(lamp_id)
-
-    if lamp_type == 'RGB':
-      print(f"Lamp {control_id}: Update RGB color")
-      r = rgb_color[0]
-      g = rgb_color[1]
-      b = rgb_color[2]
-
-      brightness = max(r, g, b)
-      print(f"R:{r}, G:{g}, B:{b}, Brightness: {brightness} ({round(brightness/255*100)}%)")
-
-      if (r+g+b) == 0:
-        bridge.set_light(control_id, 'on', False)
-      else:
-        x, y = rgb_to_xy(r, g, b)
-        bridge.set_light(control_id, 'on', True)  # Turn on the light
-        bridge.set_light(control_id, {'bri': int(brightness), 'xy': [x, y]})
-
-    elif lamp_type == 'CCT':
-      print(f"Lamp {control_id}: Update CCT value")
-      brightness = int(rgb_color[0] * 254 / 100)
-      kelvin = int(rgb_color[1])
-      print(f"CCT: {kelvin}K, Brightness: {brightness} ({round(brightness/255*100)}%)")
-
-      #x, y = colour.temperature.CCT_to_xy_CIE_D(kelvin)
-      ct = int(1000000 / kelvin)
+class LoxproxServer:
+    """Main server class for loxprox with modular architecture."""
     
-      # Clamp the ct value within the accepted range for Philips Hue (153-500)
-      ct = max(min(ct, 500), 153)
-
-      #print([x,y])
-      if brightness == 0:
-        bridge.set_light(control_id, 'on', False)
-      else:
-        bridge.set_light(control_id, 'on', True)
-        bridge.set_light(control_id, {'bri': brightness, 'ct': ct})
-
-# UDP Echo server + lamp updater
-class EchoServerProtocol(asyncio.DatagramProtocol):
-    def __init__(self):
-        super().__init__()
-
-    def connection_made(self, transport):
-        self.transport = transport
-
-    def datagram_received(self, data, addr):
+    def __init__(self, config_path: str):
+        """Initialize the server with configuration.
+        
+        Args:
+            config_path: Path to configuration file
+        """
+        self.config = load_config(config_path)
+        self.parser = InputParser()
+        self.handler_manager = HandlerManager()
+        self.output_manager = OutputManager(self.config)
+        self.servers = []
+        self.running = True
+        
+    async def start(self) -> None:
+        """Start the UDP servers."""
+        udp_config = self.config['inputs']['udp']
+        server_ip = udp_config['ip']
+        ports = udp_config['ports']
+        
+        logger.info(f"Starting UDP servers on {server_ip}:{ports}")
+        
+        loop = asyncio.get_event_loop()
+        
+        for port in ports:
+            server = await loop.create_datagram_endpoint(
+                lambda: UDPProtocol(self),
+                local_addr=(server_ip, port)
+            )
+            self.servers.append(server)
+            logger.info(f"UDP server listening on {server_ip}:{port}")
+            
+    async def stop(self) -> None:
+        """Stop all servers and clean up."""
+        self.running = False
+        
+        for transport, protocol in self.servers:
+            transport.close()
+            
+        self.output_manager.shutdown()
+        logger.info("Server stopped")
+        
+    def process_packet(self, data: bytes, addr: tuple) -> None:
+        """Process a received UDP packet.
+        
+        Args:
+            data: Raw packet data
+            addr: Source address
+        """
         try:
-            data_str = data.decode("utf-8")
-            print("*----------------------------------------------------------------")
-            print(f"Received from {addr}: {data_str}")
-            converted_data = convert_received_data(data_str)
-            if converted_data:
-                print(f"Converted data: {converted_data}")
+            # Decode packet
+            packet_str = data.decode('utf-8')
+            logger.info(f"Received from {addr}: {packet_str}")
+            
+            # Parse packet
+            parsed_data = self.parser.parse_packet(packet_str)
+            if not parsed_data:
+                logger.warning(f"Failed to parse packet: {packet_str}")
+                return
                 
-                # Update Philips Hue lamps
-                update_color(*converted_data)
+            # Process through handler
+            processed_data = self.handler_manager.process_data(parsed_data)
+            if not processed_data:
+                logger.warning(f"Handler failed to process data")
+                return
+                
+            # Route to outputs
+            results = self.output_manager.route_data(processed_data)
+            
+            # Log results
+            success_count = sum(1 for success in results.values() if success)
+            total_count = len(results)
+            
+            if success_count < total_count:
+                logger.warning(f"Sent to {success_count}/{total_count} outputs")
             else:
-                print(f"Warning: Unsupported data format received from {addr}: {data_str}")
+                logger.debug(f"Successfully sent to all {total_count} outputs")
+                
         except Exception as e:
-            print(f"Error processing data from {addr}: {e}")
+            logger.error(f"Error processing packet from {addr}: {e}")
 
-        self.transport.sendto(data, addr)
 
-async def async_main(config):
-    # Set server IP and ports
-    SERVER_IP = config['udp_server']['ip']
-    PORTS = config['udp_server']['ports']
-    print(f"Starting UDP server on {SERVER_IP}:{PORTS}")
+class UDPProtocol(asyncio.DatagramProtocol):
+    """UDP protocol handler."""
+    
+    def __init__(self, server: LoxproxServer):
+        """Initialize protocol with server reference.
+        
+        Args:
+            server: LoxproxServer instance
+        """
+        self.server = server
+        self.transport = None
+        
+    def connection_made(self, transport):
+        """Called when connection is established."""
+        self.transport = transport
+        
+    def datagram_received(self, data, addr):
+        """Called when datagram is received."""
+        # Process packet
+        self.server.process_packet(data, addr)
+        
+        # Echo back (for compatibility)
+        if self.transport:
+            self.transport.sendto(data, addr)
 
-    loop = asyncio.get_event_loop()
-    servers = []
 
-    for port in PORTS:
-        server = await loop.create_datagram_endpoint(
-            lambda: EchoServerProtocol(), local_addr=(SERVER_IP, port)
-        )
-        servers.append(server)
+async def async_main(config_path: str) -> None:
+    """Async main function.
+    
+    Args:
+        config_path: Path to configuration file
+    """
+    server = LoxproxServer(config_path)
+    
+    # Set up signal handlers
+    def signal_handler(sig, frame):
+        logger.info("Received interrupt signal, shutting down...")
+        asyncio.create_task(server.stop())
+        
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Start server
+    await server.start()
+    
+    # Keep running until stopped
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+    
+    await server.stop()
 
-    print("Servers are running... Press Ctrl+C to stop.")
-    await asyncio.Event().wait()
 
 def main():
-    parser = argparse.ArgumentParser(description="loxprox UDP server")
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="loxprox UDP server (modular version)")
     parser.add_argument(
         "-c",
         "--config",
@@ -124,21 +165,21 @@ def main():
         required=True,
         help="Path to the loxprox.yml configuration file",
     )
-
+    
     args = parser.parse_args()
-
+    
     if not args.config_file:
         parser.print_help()
-    else:
-        try:
-            # Load content of yaml config file into a dictionary
-            config = load_config(args.config_file)
-            # Initialize hue bridge controller
-            initialize_bridge(config)
-            # Start the UDP server
-            asyncio.run(async_main(config))
-        except KeyboardInterrupt:
-            print("Servers stopped.")
+        sys.exit(1)
+        
+    try:
+        asyncio.run(async_main(args.config_file))
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
