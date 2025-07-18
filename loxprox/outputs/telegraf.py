@@ -117,15 +117,28 @@ class TelegrafOutput(OutputBase):
                 fields.append(f'mode="{mode}"')
                 
             elif device_type == 'pm':  # Power meters
-                # Add power meter fields when we know the format
-                if 'power' in value:
-                    fields.append(f"power={value['power']}")
-                if 'voltage' in value:
-                    fields.append(f"voltage={value['voltage']}")
-                if 'current' in value:
-                    fields.append(f"current={value['current']}")
-                if 'energy' in value:
-                    fields.append(f"energy={value['energy']}")
+                # Power factor (signed power)
+                if 'pf' in value:
+                    fields.append(f"power_factor={value['pf']}")
+                # Energy meters
+                if 'mrc' in value:
+                    fields.append(f"energy_consumed_kwh={value['mrc']}")
+                if 'mrd' in value:
+                    fields.append(f"energy_delivered_kwh={value['mrd']}")
+                # Phase voltages
+                if 'v1' in value:
+                    fields.append(f"voltage_l1={value['v1']}")
+                if 'v2' in value:
+                    fields.append(f"voltage_l2={value['v2']}")
+                if 'v3' in value:
+                    fields.append(f"voltage_l3={value['v3']}")
+                # Phase currents
+                if 'i1' in value:
+                    fields.append(f"current_l1={value['i1']}")
+                if 'i2' in value:
+                    fields.append(f"current_l2={value['i2']}")
+                if 'i3' in value:
+                    fields.append(f"current_l3={value['i3']}")
                     
             else:
                 # Generic handling for unknown types
