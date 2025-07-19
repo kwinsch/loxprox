@@ -139,6 +139,13 @@ class TelegrafOutput(OutputBase):
                     fields.append(f"current_l2={value['i2']}")
                 if 'i3' in value:
                     fields.append(f"current_l3={value['i3']}")
+                # Phase angles (power factor angles)
+                if 'phi1' in value:
+                    fields.append(f"phase_angle_l1={value['phi1']}")
+                if 'phi2' in value:
+                    fields.append(f"phase_angle_l2={value['phi2']}")
+                if 'phi3' in value:
+                    fields.append(f"phase_angle_l3={value['phi3']}")
                     
             else:
                 # Generic handling for unknown types
