@@ -90,7 +90,11 @@ class TelegrafOutput(OutputBase):
             ts_ns = int(time.time() * 1e9)
             
             # Build measurement name and tags
-            measurement = "loxone"
+            # Use distinct measurement name for power meters for easier routing
+            if device_type == 'pm':
+                measurement = "loxone_power"
+            else:
+                measurement = "loxone"
             tags = [
                 f"device_type={device_type}",
                 f"device_id={device_id}",
