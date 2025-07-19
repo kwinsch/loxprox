@@ -117,9 +117,9 @@ class TelegrafOutput(OutputBase):
                 fields.append(f'mode="{mode}"')
                 
             elif device_type == 'pm':  # Power meters
-                # Power factor (signed power)
+                # Current power in kW (signed)
                 if 'pf' in value:
-                    fields.append(f"power_factor={value['pf']}")
+                    fields.append(f"power_kw={value['pf']}")
                 # Energy meters
                 if 'mrc' in value:
                     fields.append(f"energy_consumed_kwh={value['mrc']}")
