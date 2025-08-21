@@ -56,14 +56,22 @@ class LightHandler(HandlerBase):
                 logger.warning(f"Unknown light mode: {mode}")
                 return None
                 
-            # Return validated data
-            return {
+            # Return validated data, preserving raw packet
+            result = {
                 'device_type': data['device_type'],
                 'device_id': data['device_id'],
                 'value': value,
                 'timestamp': data.get('timestamp'),
                 'source': data.get('source')
             }
+            
+            # Preserve raw packet data for MQTT forwarding
+            if 'raw_packet' in data:
+                result['raw_packet'] = data['raw_packet']
+            if 'raw_data_string' in data:
+                result['raw_data_string'] = data['raw_data_string']
+                
+            return result
             
         except Exception as e:
             logger.error(f"Error processing light data: {e}")
