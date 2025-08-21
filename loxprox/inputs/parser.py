@@ -43,6 +43,8 @@ class InputParser:
             # Add packet metadata
             parsed_data['timestamp'] = timestamp
             parsed_data['source'] = source
+            parsed_data['raw_packet'] = packet  # Preserve full raw packet for MQTT
+            parsed_data['raw_data_string'] = data  # Preserve data portion
             
             return parsed_data
             
@@ -223,7 +225,8 @@ class InputParser:
                     continue
             
             # Validate we have at least some expected fields
-            if not result or 'pf' not in result:
+            # Accept either 'pf' (old format) or 'peff' (effective power)
+            if not result or ('pf' not in result and 'peff' not in result):
                 logger.warning(f"Power meter data missing required fields: {result}")
                 return None
                 

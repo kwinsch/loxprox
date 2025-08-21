@@ -3,3 +3,4 @@ pyyaml
 phue
 numpy
 pytest
+paho-mqtt

@@ -3,6 +3,7 @@ from typing import Dict, List, Any, Optional
 from .outputs.base import OutputBase
 from .outputs.hue import HueOutput
 from .outputs.telegraf import TelegrafOutput
+from .outputs.mqtt import MQTTOutput
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ class OutputManager:
     OUTPUT_CLASSES = {
         'hue': HueOutput,
         'telegraf': TelegrafOutput,
+        'mqtt': MQTTOutput,
     }
     
     def __init__(self, config: Dict[str, Any]):
