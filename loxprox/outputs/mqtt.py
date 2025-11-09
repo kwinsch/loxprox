@@ -3,6 +3,7 @@
 import logging
 import time
 import threading
+import socket
 from typing import Dict, Any, Optional
 import paho.mqtt.client as mqtt
 from .base import OutputBase
@@ -22,7 +23,7 @@ class MQTTOutput(OutputBase):
                 - port: MQTT broker port (default: 1883)
                 - topic_prefix: Base topic prefix (default: loxone)
                 - enabled: Whether this output is enabled
-                - client_id: MQTT client ID (default: loxprox)
+                - client_id: MQTT client ID (default: loxprox-{hostname})
                 - keepalive: MQTT keepalive interval (default: 60)
                 - retry_initial_interval: Initial retry interval in seconds (default: 60)
                 - retry_initial_attempts: Number of attempts before backoff (default: 15)
@@ -32,7 +33,11 @@ class MQTTOutput(OutputBase):
         self.host = config.get('host', 'localhost')
         self.port = config.get('port', 1883)
         self.topic_prefix = config.get('topic_prefix', 'loxone')
-        self.client_id = config.get('client_id', 'loxprox')
+
+        # Default client_id includes hostname to avoid conflicts in HA setups
+        default_client_id = f"loxprox-{socket.gethostname()}"
+        self.client_id = config.get('client_id', default_client_id)
+
         self.keepalive = config.get('keepalive', 60)
         self.retry_initial_interval = config.get('retry_initial_interval', 60)  # 1 minute
         self.retry_initial_attempts = config.get('retry_initial_attempts', 15)  # 15 attempts
