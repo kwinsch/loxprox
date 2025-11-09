@@ -4,11 +4,13 @@ A modular UDP proxy that receives data from Loxone home automation systems and r
 
 ## Features
 
-- **Multiple Output Support**: Send data to Philips Hue, Telegraf/InfluxDB, and more
+- **Multiple Output Support**: Send data to Philips Hue, MQTT, Telegraf/InfluxDB, and more
 - **Device Type Routing**: Route different device types to different outputs
 - **Extensible Architecture**: Easy to add new device types and outputs
 - **Backward Compatible**: Supports existing Loxone UDP packet formats
 - **Future Ready**: Prepared for JSON packet formats and new device types
+- **MQTT Resilience**: Automatic reconnection with stepped backoff for reliable operation
+- **HA-Ready**: Hostname-based MQTT client IDs prevent conflicts in HA setups
 
 ## Supported Device Types
 
@@ -59,20 +61,30 @@ outputs:
     enabled: true
     bridge_ip: "192.168.24.103"
     username: "your-hue-username"
-  
+
+  mqtt:
+    enabled: true
+    host: "mqtt-broker-host"
+    port: 1883
+    topic_prefix: "loxone"
+    # Optional: client_id defaults to "loxprox-{hostname}" for HA compatibility
+    # Optional: retry_initial_interval: 60 (seconds)
+    # Optional: retry_initial_attempts: 15 (before switching to long interval)
+    # Optional: retry_long_interval: 1800 (seconds, 30 minutes)
+
   telegraf:
     enabled: true
-    host: "192.168.23.87"
+    host: "telegraf-host"
     port: 52002
 
 routing:
   ph:  # Route Philips Hue devices
     outputs:
       - hue
-      - telegraf
+      - mqtt      # Send raw packets to MQTT
   pm:  # Route power meters
     outputs:
-      - telegraf
+      - mqtt
 ```
 
 ### Legacy Format (Still Supported)
@@ -149,11 +161,36 @@ UDP Packet → Input Parser → Device Handler → Output Manager → Multiple O
 2. Register it in `OutputManager`
 3. Add to configuration
 
-## Monitoring Integration
+## Output Integrations
+
+### MQTT Output
+
+The MQTT output forwards raw UDP packets to MQTT topics for downstream processing:
+
+**Features:**
+- **Automatic Reconnection**: Handles MQTT broker restarts/network issues
+  - First 15 attempts: Retry every 1 minute (startup delays)
+  - After 15 attempts: Retry every 30 minutes (persistent outages)
+- **HA-Compatible**: Default client_id includes hostname (`loxprox-{hostname}`)
+  - Prevents connection conflicts in HA deployments
+  - Both HA instances can maintain connections
+  - Only active instance (with VIP) sends data
+- **Topic Format**: `{topic_prefix}/type/{device_type}`
+  - Example: `loxone/type/hue` for Philips Hue devices
+  - Example: `loxone/type/powermeter` for power meters
+- **Payload**: Raw UDP packet preserved for downstream decoding
+
+**Use Cases:**
+- Forward data to downstream data collectors for storage/analysis
+- Enable multiple consumers of the same data stream
+- Decouple data collection from immediate processing
+- Integrate with time-series databases or data pipelines
+
+### Telegraf Output
 
 When Telegraf output is enabled, loxprox sends metrics in InfluxDB line protocol format:
 - Light state changes (RGB values, brightness, color temperature)
-- Power meter readings (when implemented)
+- Power meter readings
 - Device activity patterns
 
 Configure your Telegraf instance to receive UDP input on the configured port.
