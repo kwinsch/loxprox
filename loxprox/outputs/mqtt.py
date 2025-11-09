@@ -51,6 +51,17 @@ class MQTTOutput(OutputBase):
         Returns:
             bool: True if connection successful, False otherwise
         """
+        success = self._do_connect()
+        if not success:
+            self._start_reconnect_thread()
+        return success
+
+    def _do_connect(self) -> bool:
+        """Internal method to perform actual connection (without starting threads).
+
+        Returns:
+            bool: True if connection successful, False otherwise
+        """
         with self.reconnect_lock:
             try:
                 # Clean up existing client if any
@@ -78,12 +89,10 @@ class MQTTOutput(OutputBase):
                     return True
                 else:
                     logger.error(f"Failed to connect to MQTT broker at {self.host}:{self.port}")
-                    self._start_reconnect_thread()
                     return False
 
             except Exception as e:
                 logger.error(f"Failed to connect to MQTT broker: {e}")
-                self._start_reconnect_thread()
                 return False
     
     def _on_connect(self, client, userdata, flags, rc):
@@ -201,6 +210,11 @@ class MQTTOutput(OutputBase):
         if self.stop_reconnect.is_set():
             return
 
+        # Don't start if already connected
+        if self.connected:
+            return
+
+        # Only start if no thread is currently running
         if self.reconnect_thread is None or not self.reconnect_thread.is_alive():
             self.reconnect_thread = threading.Thread(
                 target=self._reconnect_loop,
@@ -229,9 +243,9 @@ class MQTTOutput(OutputBase):
                     f"(retrying every {retry_interval // 60}min)"
                 )
 
-            # Try to reconnect
+            # Try to reconnect - use _do_connect to avoid thread recursion
             try:
-                success = self.connect()
+                success = self._do_connect()
                 if success:
                     logger.info("MQTT reconnection successful")
                     return
